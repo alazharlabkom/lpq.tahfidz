@@ -1313,3 +1313,115 @@ function renderDoa(tab){
     </div>
   `).join('');
 }
+
+// =============================================
+// MODAL & LOGIKA INPUT BACAAN QIRO'ATI
+// =============================================
+
+function openModalQiroati() {
+  const selectSiswa = document.getElementById('qiroatiSiswa');
+  if (!selectSiswa) return;
+  
+  selectSiswa.innerHTML = '<option value="">-- Pilih Santri --</option>';
+  dataSiswa.forEach(s => {
+    selectSiswa.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.nama} (Kelas ${s.kelas})</option>`);
+  });
+
+  document.getElementById('qiroatiForm').reset();
+  document.getElementById('qiroatiTanggal').value = new Date().toISOString().split('T')[0];
+  document.getElementById('qiroatiKelas').value = '';
+  document.getElementById('qiroatiModal').style.display = 'flex';
+}
+
+function closeModalQiroati() {
+  document.getElementById('qiroatiModal').style.display = 'none';
+}
+
+function onQiroatiSiswaChange() {
+  const id = document.getElementById('qiroatiSiswa').value;
+  const s = dataSiswa.find(x => x.id == id);
+  if (s) {
+    document.getElementById('qiroatiKelas').value = s.kelas;
+    // Jika siswa memiliki riwayat qiroati terakhir, otomatis isi jilidnya
+    if (s.qiroatiTerakhir) {
+      document.getElementById('qiroatiJilid').value = s.qiroatiTerakhir.jilid || 'Jilid 1';
+      if (s.qiroatiTerakhir.halaman) {
+        document.getElementById('qiroatiHalaman').value = s.qiroatiTerakhir.halaman;
+      }
+    }
+  } else {
+    document.getElementById('qiroatiKelas').value = '';
+  }
+}
+
+function saveQiroati(e) {
+  e.preventDefault();
+  const id = document.getElementById('qiroatiSiswa').value;
+  const s = dataSiswa.find(x => x.id == id);
+  if (!s) return;
+
+  const tanggal = document.getElementById('qiroatiTanggal').value;
+  const jilid = document.getElementById('qiroatiJilid').value;
+  const halaman = document.getElementById('qiroatiHalaman').value;
+  const status = document.getElementById('qiroatiStatus').value;
+
+  // Simpan riwayat qiroati pada object siswa
+  if (!s.historyQiroati) s.historyQiroati = [];
+  
+  const recordQiroati = { tanggal, jilid, halaman: halaman ? parseInt(halaman) : null, status };
+  s.historyQiroati.push(recordQiroati);
+  s.qiroatiTerakhir = recordQiroati;
+
+  simpanData();
+  closeModalQiroati();
+  
+  // Konfirmasi kirim pesan WhatsApp
+  Swal.fire({
+    icon: 'success',
+    title: 'Data Qiro\'ati Tersimpan!',
+    text: 'Apakah ingin langsung mengirimkan laporan via WhatsApp?',
+    showCancelButton: true,
+    confirmButtonText: 'Kirim WhatsApp',
+    cancelButtonText: 'Tutup',
+    confirmButtonColor: '#25D366'
+  }).then(result => {
+    if (result.isConfirmed) {
+      sendWAQiroati(s.id, recordQiroati);
+    }
+    renderDashboard();
+  });
+}
+
+// =============================================
+// KIRIM PESAN WHATSAPP BACAAN QIRO'ATI
+// =============================================
+
+function sendWAQiroati(siswaId, dataQiroati) {
+  const s = dataSiswa.find(x => x.id == siswaId);
+  if (!s) return;
+
+  const settings = JSON.parse(localStorage.getItem('tahfidz_settings') || '{}');
+  const namaLembaga = settings.namaLembaga || "Madrasah / Pesantren";
+  const namaGuru = settings.namaGuru || "Ustadz / Ustadzah";
+
+  const halText = dataQiroati.halaman ? ` Halaman ${dataQiroati.halaman}` : '';
+  
+  const pesan = `Assalamu'alaikum Wr. Wb.
+
+*Laporan Bacaan Qiro'ati Santri*
+-----------------------------------------
+🏫 *Lembaga:* ${namaLembaga}
+👤 *Nama Santri:* ${s.nama}
+📚 *Kelas:* ${s.kelas}
+📅 *Tanggal:* ${dataQiroati.tanggal}
+📖 *Capaian:* ${dataQiroati.jilid}${halText}
+📊 *Status Bacaan:* ${dataQiroati.status}
+-----------------------------------------
+*Catatan / Pembimbing:* ${namaGuru}
+
+Mohon disimak dan didampingi belajar di rumah. Terima kasih.
+Wassalamu'alaikum Wr. Wb.`;
+
+  const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(pesan)}`;
+  window.open(url, '_blank');
+}
